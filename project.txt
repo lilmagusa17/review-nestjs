@@ -1,0 +1,748 @@
+# === ESTRUCTURA Y ARCHIVOS ===
+# Copia a un repo vacío y preserva rutas/archivos:
+
+# file: package.json
+{
+  "name": "nest-exam-simulacro",
+  "version": "1.0.0",
+  "license": "MIT",
+  "scripts": {
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "test": "jest --passWithNoTests",
+    "test:watch": "jest --watch",
+    "test:cov": "jest --coverage"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.0.0",
+    "@nestjs/core": "^10.0.0",
+    "@nestjs/jwt": "^10.2.0",
+    "@nestjs/platform-express": "^10.0.0",
+    "@nestjs/typeorm": "^10.0.0",
+    "bcrypt": "^5.1.1",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.0",
+    "pg": "^8.11.3",
+    "reflect-metadata": "^0.1.13",
+    "rxjs": "^7.8.1",
+    "typeorm": "^0.3.20"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^10.4.5",
+    "@nestjs/testing": "^10.0.0",
+    "@types/bcrypt": "^5.0.2",
+    "@types/express": "^4.17.21",
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.11.30",
+    "@types/supertest": "^2.0.16",
+    "jest": "^29.7.0",
+    "supertest": "^6.3.4",
+    "ts-jest": "^29.1.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  }
+}
+
+# file: tsconfig.json
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "declaration": false,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "ES2021",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "incremental": true,
+    "strict": true,
+    "skipLibCheck": true
+  },
+  "exclude": ["node_modules", "dist"]
+}
+
+# file: jest.config.js
+module.exports = {
+  moduleFileExtensions: ['js', 'json', 'ts'],
+  rootDir: '.',
+  testRegex: '.*\\.spec\\.ts$',
+  transform: { '^.+\\.(t|j)s$': 'ts-jest' },
+  collectCoverageFrom: ['src/**/*.(t|j)s'],
+  coverageDirectory: 'coverage',
+  testEnvironment: 'node',
+};
+
+# file: .env
+JWT_SECRET=super-secret-exam
+
+# file: src/main.ts
+import { ValidationPipe } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  await app.listen(3000);
+}
+bootstrap();
+
+# file: src/app.module.ts
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { UsersModule } from './users/users.module';
+import { BooksModule } from './books/books.module';
+
+@Module({
+  imports: [
+    TypeOrmModule.forRoot({
+      type: 'postgres',
+      host: process.env.DB_HOST ?? 'localhost',
+      port: +(process.env.DB_PORT ?? 5432),
+      username: process.env.DB_USER ?? 'postgres',
+      password: process.env.DB_PASS ?? 'postgres',
+      database: process.env.DB_NAME ?? 'testdb',
+      autoLoadEntities: true,
+      synchronize: true, // ⚠️ SOLO para practicar
+    }),
+    UsersModule,
+    BooksModule,
+  ],
+})
+export class AppModule {}
+
+# ========== USERS ==========
+
+# file: src/users/user.entity.ts
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+
+@Entity('users')
+export class User {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Column()
+  name!: string;
+
+  @Column({ unique: true })
+  email!: string;
+
+  @Column()
+  password!: string;
+
+  @CreateDateColumn()
+  createdAt!: Date;
+
+  @UpdateDateColumn()
+  updatedAt!: Date;
+}
+
+# file: src/users/dto/create-user.dto.ts
+import { IsEmail, IsNotEmpty, IsString, MinLength } from 'class-validator';
+
+export class CreateUserDto {
+  @IsString() @IsNotEmpty()
+  name!: string;
+
+  @IsEmail()
+  email!: string;
+
+  @IsString() @MinLength(8)
+  password!: string;
+}
+
+# file: src/users/dto/update-user.dto.ts
+import { IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
+
+export class UpdateUserDto {
+  @IsOptional() @IsString()
+  name?: string;
+
+  @IsOptional() @IsEmail()
+  email?: string;
+
+  @IsOptional() @IsString() @MinLength(8)
+  password?: string;
+}
+
+# file: src/users/dto/login.dto.ts
+import { IsEmail, IsString } from 'class-validator';
+
+export class LoginDto {
+  @IsEmail()
+  email!: string;
+
+  @IsString()
+  password!: string;
+}
+
+# file: src/users/users.service.ts
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { JwtService } from '@nestjs/jwt';
+import { Repository } from 'typeorm';
+import { User } from './user.entity';
+import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
+
+@Injectable()
+export class UsersService {
+  constructor(
+    @InjectRepository(User) private readonly repo: Repository<User>,
+    private readonly jwt: JwtService,
+  ) {}
+
+  getUsers() {
+    return this.repo.find();
+  }
+
+  findUserById(id: string) {
+    return this.repo.findOne({ where: { id } });
+  }
+
+  findUsersByEmail(email: string) {
+    return this.repo.findOne({ where: { email } });
+  }
+
+  async addUser(dto: CreateUserDto) {
+    const entity = this.repo.create(dto);
+    return this.repo.save(entity);
+  }
+
+  async updateUser(id: string, dto: UpdateUserDto) {
+    const found = await this.findUserById(id);
+    if (!found) return null;
+    Object.assign(found, dto);
+    return this.repo.save(found);
+  }
+
+  async removeUser(id: string) {
+    const res = await this.repo.delete(id);
+    return !!res.affected;
+  }
+
+  async login(email: string) {
+    const token = await this.jwt.signAsync({ user: { email } }, { secret: process.env.JWT_SECRET, expiresIn: '10m' });
+    return { token };
+  }
+}
+
+# file: src/users/users.controller.ts
+import { Body, Controller, Delete, Get, Param, Post, Put, Res } from '@nestjs/common';
+import { Response } from 'express';
+import * as bcrypt from 'bcrypt';
+import { UsersService } from './users.service';
+import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
+import { LoginDto } from './dto/login.dto';
+
+@Controller('users')
+export class UsersController {
+  constructor(private readonly users: UsersService) {}
+
+  @Post()
+  async create(@Body() dto: CreateUserDto, @Res() res: Response) {
+    const existing = await this.users.findUsersByEmail(dto.email);
+    if (existing) return res.status(400).json({ message: 'User already exists' });
+    dto.password = await bcrypt.hash(dto.password, 10);
+    const user = await this.users.addUser(dto);
+    return res.status(201).json({ id: user.id, email: user.email });
+  }
+
+  @Get()
+  async findAll(@Res() res: Response) {
+    const list = await this.users.getUsers();
+    return res.status(200).json(list);
+  }
+
+  @Get(':id')
+  async findOne(@Param('id') id: string, @Res() res: Response) {
+    const u = await this.users.findUserById(id);
+    return u ? res.status(200).json(u) : res.status(404).json({ message: 'User not found' });
+  }
+
+  @Delete(':id')
+  async remove(@Param('id') id: string, @Res() res: Response) {
+    const ok = await this.users.removeUser(id);
+    return ok ? res.status(204).send() : res.status(404).json({ message: 'User not found' });
+  }
+
+  @Put(':id')
+  async update(@Param('id') id: string, @Body() dto: UpdateUserDto, @Res() res: Response) {
+    const exists = await this.users.findUserById(id);
+    if (!exists) return res.status(404).json({ message: 'User not found' });
+    if (dto.password) dto.password = await bcrypt.hash(dto.password, 10);
+    const updated = await this.users.updateUser(id, dto);
+    return res.status(200).json(updated);
+  }
+
+  @Post('login')
+  async login(@Body() body: LoginDto, @Res() res: Response) {
+    const user = await this.users.findUsersByEmail(body.email);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    const ok = await bcrypt.compare(body.password, user.password);
+    if (!ok) return res.status(401).json({ message: 'Invalid credentials' });
+    const token = await this.users.login(user.email);
+    return res.status(200).json(token);
+  }
+}
+
+# file: src/users/users.module.ts
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { JwtModule } from '@nestjs/jwt';
+import { UsersController } from './users.controller';
+import { UsersService } from './users.service';
+import { User } from './user.entity';
+
+@Module({
+  imports: [
+    TypeOrmModule.forFeature([User]),
+    JwtModule.register({ global: true, secret: process.env.JWT_SECRET ?? 'dev' }),
+  ],
+  controllers: [UsersController],
+  providers: [UsersService],
+  exports: [UsersService],
+})
+export class UsersModule {}
+
+# ========== BOOKS ==========
+
+# file: src/books/book.entity.ts
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { User } from '../users/user.entity';
+
+@Entity('books')
+export class Book {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Column()
+  title!: string;
+
+  @Column()
+  author!: string;
+
+  @Column('decimal')
+  price!: number;
+
+  @Column({ default: false })
+  isSold!: boolean;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'buyerId' })
+  buyer?: User | null;
+
+  @CreateDateColumn()
+  createdAt!: Date;
+
+  @UpdateDateColumn()
+  updatedAt!: Date;
+}
+
+# file: src/books/dto/create-book.dto.ts
+import { IsNumber, IsString } from 'class-validator';
+
+export class CreateBookDto {
+  @IsString() title!: string;
+  @IsString() author!: string;
+  @IsNumber() price!: number;
+}
+
+# file: src/books/dto/update-book.dto.ts
+import { IsBoolean, IsNumber, IsOptional, IsString } from 'class-validator';
+
+export class UpdateBookDto {
+  @IsOptional() @IsString() title?: string;
+  @IsOptional() @IsString() author?: string;
+  @IsOptional() @IsNumber() price?: number;
+  @IsOptional() @IsBoolean() isSold?: boolean;
+}
+
+# file: src/books/books.service.ts
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Book } from './book.entity';
+import { User } from '../users/user.entity';
+import { CreateBookDto } from './dto/create-book.dto';
+import { UpdateBookDto } from './dto/update-book.dto';
+
+@Injectable()
+export class BooksService {
+  constructor(
+    @InjectRepository(Book) private readonly repo: Repository<Book>,
+    @InjectRepository(User) private readonly users: Repository<User>,
+  ) {}
+
+  getBooks() {
+    return this.repo.find({ relations: ['buyer'] });
+  }
+
+  findBookById(id: string) {
+    return this.repo.findOne({ where: { id }, relations: ['buyer'] });
+  }
+
+  async addBook(dto: CreateBookDto) {
+    const entity = this.repo.create({ ...dto, isSold: false });
+    return this.repo.save(entity);
+  }
+
+  // Según contrato del examen: findBooks → disponibles
+  async findBooks() {
+    return this.getAvailableBooks();
+  }
+
+  async findBookByAuthor(author: string) {
+    return this.repo
+      .createQueryBuilder('b')
+      .where('LOWER(b.author) = LOWER(:a)', { a: author })
+      .getMany();
+  }
+
+  async removeBook(id: string) {
+    const res = await this.repo.delete(id);
+    return !!res.affected;
+  }
+
+  async markBookAsSold(bookId: string, userId: string) {
+    const book = await this.findBookById(bookId);
+    if (!book) return null;
+    const buyer = await this.users.findOne({ where: { id: userId } });
+    if (!buyer) return null;
+    book.isSold = true;
+    book.buyer = buyer;
+    return this.repo.save(book);
+  }
+
+  getAvailableBooks() {
+    return this.repo.find({ where: { isSold: false } });
+  }
+
+  getSoldBooks() {
+    return this.repo.find({ where: { isSold: true } });
+  }
+
+  async updateBook(id: string, dto: UpdateBookDto) {
+    const b = await this.findBookById(id);
+    if (!b) return null;
+    Object.assign(b, dto);
+    return this.repo.save(b);
+  }
+
+  async buyBook(userId: string, bookId: string) {
+    const found = await this.findBookById(bookId);
+    if (!found || found.isSold) return null;
+    const saved = await this.markBookAsSold(bookId, userId);
+    if (!saved) return null;
+    return `El libro ${found.title} ha sido comprado por el usuario con ID ${userId}.`;
+  }
+}
+
+# file: src/books/books.controller.ts
+import { Body, Controller, Delete, Get, Param, Post, Put, Res } from '@nestjs/common';
+import { Response } from 'express';
+import { BooksService } from './books.service';
+import { CreateBookDto } from './dto/create-book.dto';
+import { UpdateBookDto } from './dto/update-book.dto';
+
+@Controller('books')
+export class BooksController {
+  constructor(private readonly books: BooksService) {}
+
+  @Post()
+  async create(@Body() dto: CreateBookDto, @Res() res: Response) {
+    try {
+      const book = await this.books.addBook(dto);
+      return res.status(201).json(book);
+    } catch {
+      return res.status(500).json({ message: 'Error creating book' });
+    }
+  }
+
+  @Get()
+  async findAll(@Res() res: Response) {
+    try {
+      const list = await this.books.getBooks();
+      return res.status(200).json(list);
+    } catch {
+      return res.status(500).json({ message: 'Error fetching books' });
+    }
+  }
+
+  @Get(':id')
+  async findOne(@Param('id') id: string, @Res() res: Response) {
+    const b = await this.books.findBookById(id);
+    return b ? res.status(200).json(b) : res.status(404).json({ message: 'Book not found' });
+  }
+
+  @Delete(':id')
+  async remove(@Param('id') id: string, @Res() res: Response) {
+    const ok = await this.books.removeBook(id);
+    return ok ? res.status(204).send() : res.status(404).json({ message: 'Book not found' });
+  }
+
+  @Put(':id')
+  async update(@Param('id') id: string, @Body() dto: UpdateBookDto, @Res() res: Response) {
+    const exists = await this.books.findBookById(id);
+    if (!exists) return res.status(404).json({ message: 'Book not found' });
+    const updated = await this.books.updateBook(id, dto);
+    return res.status(200).json(updated);
+  }
+
+  @Get('author/:id')
+  async byAuthor(@Param('id') author: string, @Res() res: Response) {
+    try {
+      const list = await this.books.findBookByAuthor(author);
+      return res.status(200).json(list);
+    } catch {
+      return res.status(500).json({ message: 'Error fetching books by author' });
+    }
+  }
+
+  @Post(':bookId/buy/:userId')
+  async buy(@Param('bookId') bookId: string, @Param('userId') userId: string, @Res() res: Response) {
+    try {
+      const msg = await this.books.buyBook(userId, bookId);
+      return msg ? res.status(200).json({ message: msg })
+                 : res.status(404).json({ message: 'Book not found or already sold' });
+    } catch {
+      return res.status(500).json({ message: 'Error buying book' });
+    }
+  }
+}
+
+# file: src/books/books.module.ts
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { BooksController } from './books.controller';
+import { BooksService } from './books.service';
+import { Book } from './book.entity';
+import { User } from '../users/user.entity';
+
+@Module({
+  imports: [TypeOrmModule.forFeature([Book, User])],
+  controllers: [BooksController],
+  providers: [BooksService],
+})
+export class BooksModule {}
+
+# ========== TESTS (unit de controller, con services mockeados) ==========
+
+# file: test/users.controller.spec.ts
+import { Test } from '@nestjs/testing';
+import { UsersController } from '../src/users/users.controller';
+import { UsersService } from '../src/users/users.service';
+
+const mockUsersService = () => ({
+  findUsersByEmail: jest.fn(),
+  addUser: jest.fn(),
+  getUsers: jest.fn(),
+  findUserById: jest.fn(),
+  removeUser: jest.fn(),
+  updateUser: jest.fn(),
+  login: jest.fn(),
+});
+
+function mockRes() {
+  const res: any = {};
+  res.status = jest.fn().mockReturnValue(res);
+  res.json = jest.fn().mockReturnValue(res);
+  res.send = jest.fn().mockReturnValue(res);
+  return res;
+}
+
+describe('UsersController', () => {
+  let controller: UsersController;
+  let service: ReturnType<typeof mockUsersService>;
+
+  beforeEach(async () => {
+    const mod = await Test.createTestingModule({
+      controllers: [UsersController],
+      providers: [{ provide: UsersService, useFactory: mockUsersService }],
+    }).compile();
+
+    controller = mod.get(UsersController);
+    service = mod.get(UsersService) as any;
+  });
+
+  it('POST /users → 201 ok', async () => {
+    const res = mockRes();
+    service.findUsersByEmail.mockResolvedValue(null);
+    service.addUser.mockResolvedValue({ id: 'u1', email: 'a@b.com' });
+    await controller.create({ name: 'Ana', email: 'a@b.com', password: '12345678' }, res);
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(res.json).toHaveBeenCalledWith({ id: 'u1', email: 'a@b.com' });
+  });
+
+  it('POST /users → 400 duplicate', async () => {
+    const res = mockRes();
+    service.findUsersByEmail.mockResolvedValue({ id: 'u1', email: 'a@b.com' });
+    await controller.create({ name: 'Ana', email: 'a@b.com', password: '12345678' }, res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ message: 'User already exists' });
+  });
+
+  it('GET /users → 200 list', async () => {
+    const res = mockRes();
+    service.getUsers.mockResolvedValue([{ id: '1' }]);
+    await controller.findAll(res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith([{ id: '1' }]);
+  });
+
+  it('GET /users/:id → 404', async () => {
+    const res = mockRes();
+    service.findUserById.mockResolvedValue(null);
+    await controller.findOne('nope', res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json).toHaveBeenCalledWith({ message: 'User not found' });
+  });
+
+  it('DELETE /users/:id → 204', async () => {
+    const res = mockRes();
+    service.removeUser.mockResolvedValue(true);
+    await controller.remove('u1', res);
+    expect(res.status).toHaveBeenCalledWith(204);
+  });
+
+  it('PUT /users/:id → 404 when not exists', async () => {
+    const res = mockRes();
+    service.findUserById.mockResolvedValue(null);
+    await controller.update('u1', { name: 'New' }, res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json).toHaveBeenCalledWith({ message: 'User not found' });
+  });
+
+  it('POST /users/login → 401 invalid password', async () => {
+    const res = mockRes();
+    service.findUsersByEmail.mockResolvedValue({ id: 'u1', email: 'a@b.com', password: '$2b$10$hash' });
+    // Forzamos bcrypt.compare a false sin tocar bcrypt real: simulamos con password erróneo
+    jest.spyOn(require('bcrypt'), 'compare').mockResolvedValueOnce(false as any);
+    await controller.login({ email: 'a@b.com', password: 'wrong' }, res);
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({ message: 'Invalid credentials' });
+  });
+
+  it('POST /users/login → 200 token', async () => {
+    const res = mockRes();
+    service.findUsersByEmail.mockResolvedValue({ id: 'u1', email: 'a@b.com', password: '$2b$10$hash' });
+    jest.spyOn(require('bcrypt'), 'compare').mockResolvedValueOnce(true as any);
+    service.login.mockResolvedValue({ token: 'jwt-token' });
+    await controller.login({ email: 'a@b.com', password: '12345678' }, res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({ token: 'jwt-token' });
+  });
+});
+
+# file: test/books.controller.spec.ts
+import { Test } from '@nestjs/testing';
+import { BooksController } from '../src/books/books.controller';
+import { BooksService } from '../src/books/books.service';
+
+const mockBooksService = () => ({
+  addBook: jest.fn(),
+  getBooks: jest.fn(),
+  findBookById: jest.fn(),
+  removeBook: jest.fn(),
+  updateBook: jest.fn(),
+  findBookByAuthor: jest.fn(),
+  buyBook: jest.fn(),
+});
+
+function mockRes() {
+  const res: any = {};
+  res.status = jest.fn().mockReturnValue(res);
+  res.json = jest.fn().mockReturnValue(res);
+  res.send = jest.fn().mockReturnValue(res);
+  return res;
+}
+
+describe('BooksController', () => {
+  let controller: BooksController;
+  let service: ReturnType<typeof mockBooksService>;
+
+  beforeEach(async () => {
+    const mod = await Test.createTestingModule({
+      controllers: [BooksController],
+      providers: [{ provide: BooksService, useFactory: mockBooksService }],
+    }).compile();
+
+    controller = mod.get(BooksController);
+    service = mod.get(BooksService) as any;
+  });
+
+  it('POST /books → 201 ok', async () => {
+    const res = mockRes();
+    service.addBook.mockResolvedValue({ id: 'b1', title: 'T', author: 'A', price: 10, isSold: false });
+    await controller.create({ title: 'T', author: 'A', price: 10 } as any, res);
+    expect(res.status).toHaveBeenCalledWith(201);
+  });
+
+  it('POST /books → 500 on error', async () => {
+    const res = mockRes();
+    service.addBook.mockRejectedValue(new Error('db fail'));
+    await controller.create({ title: 'T', author: 'A', price: 10 } as any, res);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({ message: 'Error creating book' });
+  });
+
+  it('GET /books → 200 list', async () => {
+    const res = mockRes();
+    service.getBooks.mockResolvedValue([{ id: 'b1' }]);
+    await controller.findAll(res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith([{ id: 'b1' }]);
+  });
+
+  it('GET /books/:id → 404', async () => {
+    const res = mockRes();
+    service.findBookById.mockResolvedValue(null);
+    await controller.findOne('nope', res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json).toHaveBeenCalledWith({ message: 'Book not found' });
+  });
+
+  it('DELETE /books/:id → 204', async () => {
+    const res = mockRes();
+    service.removeBook.mockResolvedValue(true);
+    await controller.remove('b1', res);
+    expect(res.status).toHaveBeenCalledWith(204);
+  });
+
+  it('PUT /books/:id → 404 when not exists', async () => {
+    const res = mockRes();
+    service.findBookById.mockResolvedValue(null);
+    await controller.update('b1', { title: 'New' } as any, res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json).toHaveBeenCalledWith({ message: 'Book not found' });
+  });
+
+  it('GET /books/author/:id → 500 on error', async () => {
+    const res = mockRes();
+    service.findBookByAuthor.mockRejectedValue(new Error('oops'));
+    await controller.byAuthor('Autor', res);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({ message: 'Error fetching books by author' });
+  });
+
+  it('POST /books/:bookId/buy/:userId → 200 on success', async () => {
+    const res = mockRes();
+    service.buyBook.mockResolvedValue('El libro T ha sido comprado por el usuario con ID u1.');
+    await controller.buy('b1', 'u1', res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      message: 'El libro T ha sido comprado por el usuario con ID u1.',
+    });
+  });
+
+  it('POST /books/:bookId/buy/:userId → 404 when not found/already sold', async () => {
+    const res = mockRes();
+    service.buyBook.mockResolvedValue(null);
+    await controller.buy('b1', 'u1', res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json).toHaveBeenCalledWith({ message: 'Book not found or already sold' });
+  });
+});
