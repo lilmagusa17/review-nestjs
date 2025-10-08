@@ -1,7 +1,3 @@
-¡Voy! Abrí tu ZIP y vi que trae **tests e2e** (`test/*.e2e-spec.ts`), configuración de **TypeORM con SQLite** en `AppModule` (usa `database.sqlite`, `synchronize: true`) y módulo de **Auth** con **JWT** (estrategia por defecto `jwt`, secreto `"secret"`). Pero **faltan las implementaciones** de `user.controller.ts`, `user.service.ts`, `book.controller.ts`, `book.service.ts` y las **entities** —los `*.spec.ts` existen, pero el código real no. Eso cuadra con el taller: te dan los tests y toca “armar” todo desde allí.
-
-Te dejo un plan express + código pegable para que los e2e pasen.
-
 ---
 
 # Qué esperan (por los e2e)
@@ -410,7 +406,3 @@ Si algo falla:
 * Verifica **status codes** (Nest devuelve 201 en `@Post` por defecto; tus e2e parecen esperar 201 al crear).
 * JWT: que `Authorization: Bearer <token>` habilite los endpoints protegidos.
 * Mensajes de error: usa `"User not found"`, `"Book not found"`, `"Invalid credentials"` si los tests lo validan.
-
----
-
-¿Quieres que te deje también un **README.md** resumen con estos tips, comandos npm/yarn y guía de Nest CLI para que lo pegues tal cual? Te lo armo en un bloque si me dices “sí”.
