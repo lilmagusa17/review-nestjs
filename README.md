@@ -1,5 +1,3 @@
-# Guía rápida de NestJS (para exámenes y proyectos)
-
 ## 1) Filosofía y estructura mental
 
 * **Arquitectura en capas**:
@@ -156,18 +154,9 @@ async update(id: string, dto: Partial<User>) {
 async remove(id: string) { return (await this.repo.delete(id)).affected! > 0; }
 ```
 
-### 2.9 Transacciones (rápido)
-
-```ts
-await this.repo.manager.transaction(async (em) => {
-  const userRepo = em.getRepository(User);
-  // ... operaciones atómicas
-});
-```
-
 ---
 
-## 3) Flujo de app sano (qué va en cada capa)
+## 3) Flujo de app
 
 * **Controller**:
 
@@ -196,7 +185,7 @@ await this.repo.manager.transaction(async (em) => {
 
 ---
 
-## 4) Comandos útiles (npm ↔️ yarn)
+## 4) Comandos útiles (npm / yarn)
 
 ### 4.1 Scripts de proyecto
 
@@ -224,7 +213,7 @@ await this.repo.manager.transaction(async (em) => {
 
 ---
 
-## 5) Nest CLI (generadores que ahorran tiempo)
+## 5) Nest CLI 
 
 > Instalar global (opcional): `npm i -g @nestjs/cli` / `yarn global add @nestjs/cli`
 
@@ -258,7 +247,7 @@ TypeOrmModule.forRoot({
   password: process.env.DB_PASS || 'postgres',
   database: process.env.DB_NAME || 'appdb',
   autoLoadEntities: true,
-  synchronize: true, // ✅ Examen/demo | ❌ Producción
+  synchronize: true, 
 });
 ```
 
