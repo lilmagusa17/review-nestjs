@@ -1,5 +1,3 @@
-# Guía rápida de NestJS (para exámenes y proyectos)
-
 ## 1) Filosofía y estructura mental
 
 * **Arquitectura en capas**:
